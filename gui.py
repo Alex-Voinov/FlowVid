@@ -2,6 +2,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QLineEdit, QTextEdit, QFileDialog, QFrame
 )
+from uploader import upload
 
 
 class VideoUploaderGUI(QWidget):
@@ -77,6 +78,7 @@ class VideoUploaderGUI(QWidget):
         file, _ = QFileDialog.getOpenFileName(self, "Выберите видео", "", "Video Files (*.mp4 *.mov *.avi)")
         if file:
             self.video_label.setText(f"Видео: {file}")
+            self.video_file_path = file
 
     def select_image(self):
         """Открывает диалог выбора картинки и обновляет QLabel"""
@@ -108,4 +110,8 @@ class VideoUploaderGUI(QWidget):
         # Здесь будет логика загрузки на соцсети
         selected_networks = [net for net, btn in self.network_buttons.items() if btn.isChecked()]
         video_file = getattr(self, "video_file_path", None)
-        print("Загружаем видео:", video_file, "на:", selected_networks)
+        title = self.title_input.text()
+        description = self.desc_input.toPlainText()
+        tags = [self.tag_layout.itemAt(i).widget().text() for i in range(self.tag_layout.count()) if hasattr(self.tag_layout.itemAt(i).widget(), "text")]
+        thumbnail = getattr(self, "thumbnail_path", None)
+        upload(video_file, selected_networks, title, description, tags, thumbnail)

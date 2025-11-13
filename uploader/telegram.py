@@ -5,9 +5,9 @@ import asyncio
 
 load_dotenv()
 
-API_ID = int(getenv("API_ID"))
-API_HASH = getenv("API_HASH")
-CHANNEL = getenv("CHANNEL")
+API_ID = int(getenv("TG_API_ID"))
+API_HASH = getenv("TG_API_HASH")
+CHANNEL = getenv("TG_CHANNEL")
 
 # Имя файла сессии Telethon
 SESSION_NAME = "telegram_session"
@@ -20,6 +20,7 @@ async def send_video(video_file, title):
     with open(video_file, "rb") as f:
         await client.send_file(CHANNEL, f, caption=title)
     print(f"[Telegram] Видео загружено: {video_file}")
+
 
 def upload_video(video_file, title):
     """

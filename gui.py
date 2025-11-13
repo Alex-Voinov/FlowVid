@@ -33,8 +33,7 @@ class VideoUploaderGUI(QWidget):
             "Instagram Reels",
             "VK",
             "Telegram",
-            "YouTube Shorts",
-            "YouTube Video"
+            "YouTube",
         ]:
             btn = QPushButton(network)
             btn.setCheckable(True)          # Можно выбирать/снимать выбор

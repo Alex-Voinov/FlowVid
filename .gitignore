@@ -208,3 +208,5 @@ __marimo__/
 
 *.session
 *.session-journal
+client_secret.json
+token_youtube.pickle

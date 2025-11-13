@@ -10,7 +10,7 @@ def upload(video_file: str, networks: list, title: str, description: str, tags: 
         return
 
     if "Telegram" in networks:
-        telegram.upload_video(video_file, title, description, tags, thumbnail)
+        telegram.upload_video(video_file, title)
     if "YouTube" in networks:
         youtube.upload_video(video_file, title, description, tags, thumbnail)
     if "TikTok" in networks:

@@ -43,6 +43,7 @@ def upload_video(video_file: str, title: str, description: str = "", tags=None, 
         },
         "status": {
             "privacyStatus": 'unlisted',#"public",
+            "selfDeclaredMadeForKids": True, #для детей? да
         },
     }
 

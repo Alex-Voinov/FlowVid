@@ -84,6 +84,7 @@ class VideoUploaderGUI(QWidget):
         file, _ = QFileDialog.getOpenFileName(self, "Выберите картинку", "", "Images (*.png *.jpg *.jpeg)")
         if file:
             self.thumb_label.setText(f"Картинка: {file}")
+            self.thumbnail_path = file
 
     def add_tag(self):
         """Добавляет новый тег с QLineEdit и кнопкой удаления"""
@@ -111,6 +112,14 @@ class VideoUploaderGUI(QWidget):
         video_file = getattr(self, "video_file_path", None)
         title = self.title_input.text()
         description = self.desc_input.toPlainText()
-        tags = [self.tag_layout.itemAt(i).widget().text() for i in range(self.tag_layout.count()) if hasattr(self.tag_layout.itemAt(i).widget(), "text")]
+        tags = []
+        for i in range(1, self.tag_layout.count()):  # пропускаем кнопку "+ Добавить тег"
+            frame = self.tag_layout.itemAt(i).widget()
+            if frame:
+                line = frame.layout().itemAt(0).widget()  # QLineEdit — первый элемент
+                if isinstance(line, QLineEdit):
+                    text = line.text().strip()
+                    if text:
+                        tags.append(text)
         thumbnail = getattr(self, "thumbnail_path", None)
         upload(video_file, selected_networks, title, description, tags, thumbnail)

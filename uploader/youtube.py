@@ -31,24 +31,34 @@ def get_authenticated_service():
 
     return build("youtube", "v3", credentials=creds)
 
-def upload_video(video_file: str, title: str, description: str = "", tags=None, thumbnail: str = None):
-    youtube = get_authenticated_service()
+def upload_video(video_file: str, title: str, description: str = "",
+                 tags: list[str] = None, thumbnail: str = None):
 
+    youtube = get_authenticated_service()
+    tags = tags or []
+    # Добавляем хэштеги ТОЛЬКО в описание
+    description += "\n\n" + " ".join([f"#{tag}" for tag in tags])
     body = {
         "snippet": {
             "title": title,
             "description": description,
-            "tags": tags or [],
-            "categoryId": "22",  # People & Blogs
+            "tags": tags,
+            "categoryId": "22",
         },
         "status": {
-            "privacyStatus": 'unlisted',#"public",
-            "selfDeclaredMadeForKids": True, #для детей? да
+            "privacyStatus": 'unlisted',
+            "selfDeclaredMadeForKids": True,
         },
     }
 
-    media = MediaFileUpload(video_file, chunksize=-1, resumable=True)
-    request = youtube.videos().insert(part="snippet,status", body=body, media_body=media)
+    media = MediaFileUpload(video_file, chunksize=256 * 1024, resumable=True)
+
+    request = youtube.videos().insert(
+        part="snippet,status",
+        body=body,
+        media_body=media
+    )
+
     response = None
     while response is None:
         status, response = request.next_chunk()
@@ -57,5 +67,17 @@ def upload_video(video_file: str, title: str, description: str = "", tags=None, 
 
     print(f"[YouTube] Видео загружено: https://youtu.be/{response['id']}")
 
+    # === Миниатюра ===
     if thumbnail:
-        youtube.thumbnails().set(videoId=response["id"], media_body=thumbnail).execute()
+        # указание MIME обязательно
+        ext = thumbnail.lower()
+        mime = "image/jpeg" if ext.endswith(".jpg") or ext.endswith(".jpeg") else "image/png"
+
+        media_thumb = MediaFileUpload(thumbnail, mimetype=mime)
+        youtube.thumbnails().set(
+            videoId=response["id"],
+            media_body=media_thumb
+        ).execute()
+
+        print(f"[YouTube] Миниатюра загружена: {thumbnail}")
+

@@ -1,6 +1,5 @@
 import pickle
 from pathlib import Path
-import logging
 
 from google.auth.transport.requests import Request
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -8,8 +7,7 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
 from config.networks import NetworkConfig
-
-logger = logging.getLogger("flowvid")
+from utils.logger import log 
 
 
 class Uploader:
@@ -43,7 +41,7 @@ class Uploader:
 
         # Инициализация YouTube API один раз
         self.service = self._get_authenticated_service()
-        logger.info("[YouTube] Сервис инициализирован")
+        log("[YouTube] Сервис инициализирован", level="info")
 
     def _get_authenticated_service(self):
         """Возвращает авторизованный объект YouTube API."""
@@ -59,7 +57,7 @@ class Uploader:
             try:
                 if creds and creds.expired and creds.refresh_token:
                     creds.refresh(Request())
-                    logger.info("[YouTube] Токен обновлён через refresh_token")
+                    log("[YouTube] Токен обновлён через refresh_token", level="info")
                 else:
                     flow = InstalledAppFlow.from_client_secrets_file(
                         str(self.client_secret_path), self.scopes
@@ -69,12 +67,12 @@ class Uploader:
                         port=8080,
                         authorization_prompt_message="Откройте ссылку для авторизации Google:"
                     )
-                    logger.info("[YouTube] Новый токен получен через OAuth")
+                    log("[YouTube] Новый токен получен через OAuth", level="info")
                 # Сохраняем токен
                 with open(self.token_path, "wb") as f:
                     pickle.dump(creds, f)
             except Exception as e:
-                logger.error(f"[YouTube] Ошибка OAuth: {e}")
+                log(f"[YouTube] Ошибка OAuth: {e}", level="error")
                 raise RuntimeError(f"YouTube OAuth failed: {e}") from e
 
         return build("youtube", "v3", credentials=creds)
@@ -90,7 +88,7 @@ class Uploader:
         """Загружает видео на YouTube с миниатюрой и тегами."""
         video_file = Path(video_file)
         if not video_file.exists():
-            logger.error(f"[YouTube] Видео не найдено: {video_file}")
+            log(f"[YouTube] Видео не найдено: {video_file}", level="error")
             return {"success": False, "error": f"Видео не найдено: {video_file}"}
 
         tags = tags or []
@@ -110,28 +108,33 @@ class Uploader:
             },
         }
 
-        # Загрузка видео
-        media = MediaFileUpload(video_file, chunksize=256 * 1024, resumable=True)
-        request = self.service.videos().insert(part="snippet,status", body=body, media_body=media)
+        try:
+            # Загрузка видео
+            media = MediaFileUpload(video_file, chunksize=256 * 1024, resumable=True)
+            request = self.service.videos().insert(part="snippet,status", body=body, media_body=media)
 
-        response = None
-        while response is None:
-            status, response = request.next_chunk()
-            if status:
-                logger.info(f"[YouTube] Загрузка: {int(status.progress() * 100)}%")
+            response = None
+            while response is None:
+                status, response = request.next_chunk()
+                if status:
+                    log(f"[YouTube] Загрузка: {int(status.progress() * 100)}%", level="info")
 
-        logger.info(f"[YouTube] Видео загружено: https://youtu.be/{response['id']}")
+            log(f"[YouTube] Видео загружено: https://youtu.be/{response['id']}", level="info")
 
-        # Загрузка миниатюры
-        if thumbnail:
-            thumbnail = Path(thumbnail)
-            if thumbnail.exists():
-                ext = thumbnail.suffix.lower()
-                mime = "image/jpeg" if ext in (".jpg", ".jpeg") else "image/png"
-                media_thumb = MediaFileUpload(thumbnail, mimetype=mime)
-                self.service.thumbnails().set(videoId=response["id"], media_body=media_thumb).execute()
-                logger.info(f"[YouTube] Миниатюра загружена: {thumbnail}")
-            else:
-                logger.warning(f"[YouTube] Миниатюра не найдена: {thumbnail}")
+            # Загрузка миниатюры
+            if thumbnail:
+                thumbnail = Path(thumbnail)
+                if thumbnail.exists():
+                    ext = thumbnail.suffix.lower()
+                    mime = "image/jpeg" if ext in (".jpg", ".jpeg") else "image/png"
+                    media_thumb = MediaFileUpload(thumbnail, mimetype=mime)
+                    self.service.thumbnails().set(videoId=response["id"], media_body=media_thumb).execute()
+                    log(f"[YouTube] Миниатюра загружена: {thumbnail}", level="info")
+                else:
+                    log(f"[YouTube] Миниатюра не найдена: {thumbnail}", level="warning")
 
-        return {"success": True, "video_id": response["id"], "url": f"https://youtu.be/{response['id']}"}
+            return {"success": True, "video_id": response["id"], "url": f"https://youtu.be/{response['id']}"}
+
+        except Exception as e:
+            log(f"[YouTube] Ошибка загрузки: {e}", level="error")
+            return {"success": False, "error": str(e)}

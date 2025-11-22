@@ -210,3 +210,4 @@ __marimo__/
 *.session-journal
 client_secret.json
 token_youtube.pickle
+logs/

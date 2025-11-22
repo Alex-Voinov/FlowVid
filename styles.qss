@@ -7,8 +7,33 @@ QWidget {
 }
 
 /* Кнопки */
-QPushButton {
+QPushButton:not(#tagRemove) {
     background-color: #303030;                 
     padding: 10px;
     outline: 1px solid #404040;
+}
+
+QFrame#tagFrame {
+    background-color: #3A3A3A;
+    border-radius: 6px;
+    padding: 4px 8px;
+}
+
+QLineEdit#tagLabel {
+    background: transparent;
+    border: none;
+    color: #FFFFFF;
+    font-weight: 500;
+}
+
+QPushButton#tagRemove {
+    border: none;
+    background: transparent;
+    color: #AAAAAA;
+    font-weight: bold;
+    margin-left: 6px;
+}
+
+QPushButton#tagRemove:hover {
+    color: #FF5555;
 }

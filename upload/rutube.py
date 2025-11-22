@@ -1,9 +1,7 @@
-import logging
 from pathlib import Path
 from .base_uploader import BaseUploader
 from config.networks import NetworkConfig
-
-logger = logging.getLogger("flowvid")
+from utils.logger import log  
 
 
 class Uploader(BaseUploader):
@@ -12,11 +10,7 @@ class Uploader(BaseUploader):
 
     Поддерживает интерфейс BaseUploader и UploaderManager.
     Сейчас — заглушка, позже можно подключить Selenium для реальной загрузки.
-
-    Инициализация через NetworkConfig, чтобы менеджер мог работать
-    с любой сетью одинаково.
     """
-
 
     def __init__(self, config: NetworkConfig):
         """
@@ -29,7 +23,7 @@ class Uploader(BaseUploader):
         if config.platform_settings:
             profile_path = config.platform_settings.get("profile_path")
         super().__init__(profile_path)
-        logger.info(f"[{self.config.title}] Инициализация завершена")
+        log(f"[{self.config.title}] Инициализация завершена", level="info")
 
     def check_login(self) -> bool:
         """
@@ -38,7 +32,7 @@ class Uploader(BaseUploader):
         :return: True если пользователь авторизован, False иначе
         """
         # TODO: Реальная проверка через Selenium
-        logger.info(f"[{self.config.title}] Проверка логина (заглушка) — OK")
+        log(f"[{self.config.title}] Проверка логина (заглушка) — OK", level="info")
         return True
 
     def upload(
@@ -62,7 +56,7 @@ class Uploader(BaseUploader):
         video_file = Path(video_file)
         if not video_file.exists():
             msg = f"Видео не найдено: {video_file}"
-            logger.error(f"[{self.config.title}] {msg}")
+            log(f"[{self.config.title}] {msg}", level="error")
             return {
                 "success": False,
                 "platform": self.config.title,
@@ -72,17 +66,17 @@ class Uploader(BaseUploader):
         if thumbnail:
             thumbnail = Path(thumbnail)
             if not thumbnail.exists():
-                logger.warning(f"[{self.config.title}] Миниатюра не найдена: {thumbnail}")
+                log(f"[{self.config.title}] Миниатюра не найдена: {thumbnail}", level="warning")
 
         tags = tags or []
 
         # Эмуляция загрузки
-        logger.info(f"[{self.config.title}] Загружаю видео: {video_file}")
-        logger.info(f"[{self.config.title}] Title: {title}")
-        logger.info(f"[{self.config.title}] Desc: {description[:100]}")
-        logger.info(f"[{self.config.title}] Tags: {tags}")
+        log(f"[{self.config.title}] Загружаю видео: {video_file}", level="info")
+        log(f"[{self.config.title}] Title: {title}", level="info")
+        log(f"[{self.config.title}] Desc: {description[:100]}", level="info")
+        log(f"[{self.config.title}] Tags: {tags}", level="info")
         if thumbnail:
-            logger.info(f"[{self.config.title}] Thumbnail: {thumbnail}")
+            log(f"[{self.config.title}] Thumbnail: {thumbnail}", level="info")
 
         # Возвращаем успешный результат
         return {

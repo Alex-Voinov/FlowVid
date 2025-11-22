@@ -6,8 +6,7 @@ from core.browser_profile import BrowserProfile
 from utils.logger import log
 from utils.paths import site_profile
 import time
-import os
-from typing import Dict, Optional
+from typing import Dict
 
 class SeleniumManager:
     """

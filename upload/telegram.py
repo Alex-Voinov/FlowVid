@@ -1,12 +1,10 @@
 from pathlib import Path
 import asyncio
-import logging
 from os import getenv
 from telethon import TelegramClient, errors
 
 from config.networks import NetworkConfig
-
-logger = logging.getLogger("flowvid")
+from utils.logger import log  
 
 
 class Uploader:
@@ -47,7 +45,7 @@ class Uploader:
         if not self._connected:
             await self.client.start()
             self._connected = True
-            logger.info(f"[{self.title}] Клиент Telegram подключен")
+            log(f"[{self.title}] Клиент Telegram подключен", level="info")
 
     async def _send_video(self, video_file: Path, title: str):
         """Асинхронная отправка видео через Telethon с прогрессом."""
@@ -55,7 +53,7 @@ class Uploader:
 
         def progress_callback(sent_bytes, total_bytes):
             percent = sent_bytes / total_bytes * 100
-            logger.info(f"[{self.title}] Загрузка: {percent:.2f}%")
+            log(f"[{self.title}] Загрузка: {percent:.2f}%", level="info")
 
         try:
             await self.client.send_file(
@@ -64,9 +62,9 @@ class Uploader:
                 caption=title,
                 progress_callback=progress_callback
             )
-            logger.info(f"[{self.title}] Видео загружено: {video_file}")
+            log(f"[{self.title}] Видео загружено: {video_file}", level="info")
         except errors.TelegramError as e:
-            logger.error(f"[{self.title}] Ошибка при отправке видео: {e}")
+            log(f"[{self.title}] Ошибка при отправке видео: {e}", level="error")
             raise
 
     def upload(
@@ -88,7 +86,7 @@ class Uploader:
         """
         video_file = Path(video_file)
         if not video_file.exists():
-            logger.error(f"[{self.title}] Видео не найдено: {video_file}")
+            log(f"[{self.title}] Видео не найдено: {video_file}", level="error")
             return {"success": False, "error": f"Видео не найдено: {video_file}"}
 
         try:

@@ -53,13 +53,17 @@ class Uploader(BaseUploader):
 
         # Заполняем метаданные
         self._fill_metadata(driver, wait, title, description, tags)
+    
+        # Выбираем категорию
+        self._select_category(driver, wait, category="Дизайн") 
 
         # Загружаем обложку
         if thumbnail:
             self._upload_thumbnail(driver, wait, thumbnail)
+            self._click_ready_button(driver, wait)
 
         # Получаем ссылку на видео
-        video_url = self._get_video_url(wait)
+        video_url = self._wait_video_ready_and_publish(driver, wait)
 
         result = {
             "success": True,
@@ -69,7 +73,38 @@ class Uploader(BaseUploader):
             "message": "Видео успешно загружено!",
         }
         log(f"[{self.config.title}] Завершено. Ссылка: {video_url}", level="success")
+        
         return result
+
+    # ================================================================
+    # Выбор категории из выпадающего списка
+    # ================================================================
+    def _select_category(self, driver, wait, category: str):
+        log(f"[{self.config.title}] Выбираем категорию: {category}")
+
+        # 1. Открываем селект (combobox)
+        combobox = wait.until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, "div[role='combobox']"))
+        )
+        driver.execute_script("arguments[0].scrollIntoView(true);", combobox)
+        combobox.click()
+
+        # 2. Ждём появления списка опций
+        options = wait.until(
+            EC.presence_of_all_elements_located((By.CSS_SELECTOR, "div[role='option']"))
+        )
+
+        # 3. Ищем нужный текст
+        found = False
+        for opt in options:
+            if category.lower() in opt.text.lower():
+                opt.click()
+                log(f"[{self.config.title}] Категория выбрана: {opt.text}")
+                found = True
+                break
+
+        if not found:
+            log(f"[{self.config.title}] Категория '{category}' не найдена", level="warning")
 
     # ================================================================
     # Проверка входных данных
@@ -82,6 +117,49 @@ class Uploader(BaseUploader):
             raise FileNotFoundError(msg)
         return video_file
 
+    def _wait_video_ready_and_publish(self, driver, wait):
+        log(f"[{self.config.title}] Ждём появления ссылки на видео...")
+
+        # Ждём ссылку вида rutube.ru/video/...
+        link_el = wait.until(
+            EC.presence_of_element_located(
+                (By.XPATH, "//a[contains(@href,'rutube.ru/video')]")
+            )
+        )
+        video_url = link_el.get_attribute("href")
+        log(f"[{self.config.title}] Ссылка появилась: {video_url}")
+
+        # Доп. пауза — Rutube долго дохерачит внутренние процессы
+        time.sleep(1.0)
+
+        # Жмём "Опубликовать"
+        self._click_publish(driver, wait)
+
+        # Даём загрузке обработать команду
+        time.sleep(1.0)
+
+        return video_url
+
+    def _click_publish(self, driver, wait):
+        """
+        Кликает по кнопке 'Опубликовать'
+        """
+        log(f"[{self.config.title}] Нажимаем кнопку 'Опубликовать'")
+
+        # Ждём появления кнопки
+        publish_btn = wait.until(
+            EC.element_to_be_clickable((
+                By.XPATH,
+                "//button[.//span[text()='Опубликовать']]"
+            ))
+        )
+
+        # Скроллим если нужно
+        driver.execute_script("arguments[0].scrollIntoView({block:'center'});", publish_btn)
+
+        # Кликаем
+        driver.execute_script("arguments[0].click();", publish_btn)
+
     def _validate_thumbnail(self, thumbnail):
         if not thumbnail:
             return None
@@ -90,6 +168,25 @@ class Uploader(BaseUploader):
             log(f"[{self.config.title}] Миниатюра не найдена: {thumbnail}", level="warning")
             return None
         return thumbnail
+
+    def _click_ready_button(self, driver, wait):
+        """
+        Жмёт кнопку 'Готово' после выбора изображения.
+        """
+        # Ждём, пока кнопка станет кликабельной
+        btn = wait.until(
+            EC.element_to_be_clickable(
+                (By.XPATH, "//button[.//span[contains(text(),'Готово')]]")
+            )
+        )
+
+        # Скроллим к кнопке на всякий случай
+        driver.execute_script("arguments[0].scrollIntoView(true);", btn)
+
+        # Жмём
+        btn.click()
+
+        log(f"[{self.config.title}] Нажали кнопку 'Готово'")
 
     # ================================================================
     # Загрузка файла

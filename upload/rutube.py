@@ -3,7 +3,8 @@ from .base_uploader import BaseUploader
 from config.networks import NetworkConfig
 from utils.logger import log
 from core.selenium_manager import SeleniumManager
-
+import pyautogui
+import time
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -112,13 +113,15 @@ class Uploader(BaseUploader):
         driver.execute_script("arguments[0].scrollIntoView(true);", upload_btn)
         upload_btn.click()
 
-        file_input = wait.until(
-            EC.presence_of_element_located(
-                (By.XPATH, "//input[@type='file' and contains(@accept, 'image')]")
-            )
-        )
-        file_input.send_keys(str(thumbnail.resolve()))
-        log(f"[{self.config.title}] Обложка загружена")
+        # Ждём открытия диалога выбора файла
+        time.sleep(1.0)  # Можно увеличить, если диалог открывается медленно
+
+        # Вводим путь к файлу и нажимаем Enter
+        pyautogui.write(str(thumbnail.resolve()))
+        pyautogui.press("enter")
+
+        log(f"[{self.config.title}] Файл {thumbnail} отправлен в диалог загрузки")
+       
 
     # ================================================================
     # Ожидание обработки видео

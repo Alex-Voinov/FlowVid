@@ -32,11 +32,20 @@ class NetworkConfig:
 # Настройки конкретных платформ
 # -----------------------------
 YOUTUBE_SETTINGS = {
+    # Видео-параметры
     "privacy_status": "unlisted",
     "made_for_kids": True,
-    "category_id": "22",        # Дизайн
+    "category_id": "22",
+
+    # OAuth
     "token_path": Path("token_youtube.pickle"),
-    "scopes": ["https://www.googleapis.com/auth/youtube.upload"]
+    "scopes": ["https://www.googleapis.com/auth/youtube.upload"],
+    "client_secret_path": Path("client_secret.json"),   # <-- новая опция
+    "oauth_host": "localhost",
+    "oauth_port": 8080,
+
+    # Upload
+    "chunk_size": 256 * 1024, 
 }
 
 RUTUBE_SETTINGS = {

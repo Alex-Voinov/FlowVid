@@ -30,18 +30,23 @@ class Uploader:
             "scopes", ["https://www.googleapis.com/auth/youtube.upload"]
         )
         self.token_path: Path = Path(self.settings.get("token_path", "token_youtube.pickle"))
-        self.privacy_status: str = self.settings.get("privacy_status", "unlisted")
-        self.made_for_kids: bool = self.settings.get("made_for_kids", True)
-        self.category_id: str = self.settings.get("category_id", "22")
+        self.privacy_status = self.settings.get("privacy_status", "unlisted")
+        self.made_for_kids = self.settings.get("made_for_kids", True)
+        self.category_id = self.settings.get("category_id", "22")
+        self.chunk_size = self.settings.get("chunk_size", 256 * 1024)
 
-        # Путь к client_secret.json в проекте (корень проекта)
-        self.client_secret_path = Path(__file__).parent.parent / "client_secret.json"
+        # Настраиваем путь к client_secret
+        default_secret = Path(__file__).parent.parent / "client_secret.json"
+        self.client_secret_path = Path(self.settings.get("client_secret_path", default_secret))
+
         if not self.client_secret_path.exists():
             raise FileNotFoundError(f"Client secret not found: {self.client_secret_path}")
 
-        # Инициализация YouTube API один раз
+        # OAuth сервер
+        self.oauth_host = self.settings.get("oauth_host", "localhost")
+        self.oauth_port = self.settings.get("oauth_port", 8080)
+
         self.service = self._get_authenticated_service()
-        log("[YouTube] Сервис инициализирован", level="info")
 
     def _get_authenticated_service(self):
         """Возвращает авторизованный объект YouTube API."""
@@ -63,8 +68,8 @@ class Uploader:
                         str(self.client_secret_path), self.scopes
                     )
                     creds = flow.run_local_server(
-                        host="localhost",
-                        port=8080,
+                        host=self.oauth_host,
+                        port=self.oauth_port,
                         authorization_prompt_message="Откройте ссылку для авторизации Google:"
                     )
                     log("[YouTube] Новый токен получен через OAuth", level="info")
@@ -110,7 +115,7 @@ class Uploader:
 
         try:
             # Загрузка видео
-            media = MediaFileUpload(video_file, chunksize=256 * 1024, resumable=True)
+            media = MediaFileUpload(video_file, chunksize=self.chunk_size, resumable=True)
             request = self.service.videos().insert(part="snippet,status", body=body, media_body=media)
 
             response = None

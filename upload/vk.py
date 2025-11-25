@@ -1,49 +1,124 @@
-import os
-import requests
-from dotenv import load_dotenv
+from pathlib import Path
+from .base_uploader import BaseUploader
+from utils.logger import log
+from core.selenium_manager import SeleniumManager
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.keys import Keys
+import time
 
-load_dotenv()
-
-SERVICE_TOKEN = os.getenv("VK_SERVICE_TOKEN")
-OWNER_ID = int(os.getenv("VK_OWNER_ID"))  # группа: отрицательный ID, пользователь: положительный
-
-if not SERVICE_TOKEN or not OWNER_ID:
-    raise RuntimeError("VK_SERVICE_TOKEN или VK_OWNER_ID не заданы в .env")
-
-
-def upload_video(video_path: str, title: str = "", description: str = "", tags: list[str] = [], thumbnail: str = None):
+class Uploader(BaseUploader):
     """
-    Загружает видео в VK (личный профиль или сообщество)
+    Загрузчик видео в VK группу через Selenium.
     """
 
-    # 1. Получаем сервер для загрузки
-    upload_url_req = requests.get(
-        "https://api.vk.com/method/video.save",
-        params={
-            "access_token": SERVICE_TOKEN,
-            "v": "5.131",
-            "name": title,
-            "description": description,
-            "privacy_view": "nobody", # nobody - скрыто, потом поменять на all
-            "group_id": abs(OWNER_ID) if OWNER_ID < 0 else None
-        },
-    ).json()
+    def __init__(self, config):
+        self.config = config
+        profile_path = getattr(config, "profile_path", None)
+        super().__init__(profile_path)
+        log(f"[{self.config.title}] Инициализация завершена", level="info")
 
-    if "error" in upload_url_req:
-        raise Exception(f"VK API error (video.save): {upload_url_req['error']}")
+    # ================================================================
+    # Основной метод загрузки
+    # ================================================================
+    def upload(
+        self,
+        video_file: str | Path,
+        title: str = "",
+        description: str = "",
+        tags: list[str] | None = None,
+        thumbnail: str | Path | None = None,
+        profile_name: str = "default",
+    ):
+        video_file = self._validate_video(video_file)
+        thumbnail = self._validate_thumbnail(thumbnail)
 
-    upload_url = upload_url_req["response"]["upload_url"]
+        driver = SeleniumManager.instance().start(profile_name=profile_name, headless=False)
+        wait = WebDriverWait(driver, 20)
 
-    # 2. Загружаем видео
-    with open(video_path, "rb") as f:
-        files = {"video_file": f}
-        upload_resp = requests.post(upload_url, files=files).json()
+        # Открываем страницу группы
+        group_url = f"https://vk.com/{self.config.platform_settings.get("group_name")}"
+        log(f"[{self.config.title}] Открываем группу: {group_url}")
+        driver.get(group_url)
 
-    if "error" in upload_resp:
-        raise Exception(f"VK API error (upload): {upload_resp['error']}")
+        # Кликаем "Добавить"
+        add_btn = wait.until(
+            EC.element_to_be_clickable((By.XPATH, "//span[text()='Добавить']/ancestor::span[contains(@class,'vkuiButton__in')]"))
+        )
+        driver.execute_script("arguments[0].scrollIntoView({block:'center'});", add_btn)
+        add_btn.click()
+        log(f"[{self.config.title}] Кликнули 'Добавить'")
+        time.sleep(1)  # ждём появления input
 
-    video_id = upload_resp["video_id"]
-    owner_id = upload_resp["owner_id"]
+        # Загружаем видео через input
+        file_input = wait.until(
+            EC.presence_of_element_located(
+                (By.XPATH, "//input[@type='file' and contains(@class,'vkuiVisuallyHidden__focusableInput')]")
+            )
+        )
+        file_input.send_keys(str(video_file.resolve()))
+        log(f"[{self.config.title}] Видео отправлено в загрузку: {video_file}")
 
-    print(f"[VK] Видео загружено: https://vk.com/video{owner_id}_{video_id}")
-    return f"https://vk.com/video{owner_id}_{video_id}"
+        # Можно добавить ожидание прогресс-бара, пока видео обрабатывается
+        self._wait_video_processing(wait)
+
+        # Заполняем описание и теги
+        self._fill_metadata(driver, wait, title, description, tags)
+
+        # Возвращаем ссылку на видео после публикации
+        video_url = self._get_video_url(wait)
+
+        log(f"[{self.config.title}] Видео успешно загружено: {video_url}", level="success")
+
+        return {
+            "success": True,
+            "platform": self.config.title,
+            "video_path": str(video_file),
+            "video_url": video_url,
+            "message": "Видео успешно загружено!"
+        }
+
+    # ================================================================
+    # Вспомогательные методы
+    # ================================================================
+    def _validate_video(self, video_file: str | Path) -> Path:
+        video_file = Path(video_file)
+        if not video_file.exists():
+            msg = f"Видео не найдено: {video_file}"
+            log(f"[{self.config.title}] {msg}", level="error")
+            raise FileNotFoundError(msg)
+        return video_file
+
+    def _validate_thumbnail(self, thumbnail):
+        if not thumbnail:
+            return None
+        thumbnail = Path(thumbnail)
+        if not thumbnail.exists():
+            log(f"[{self.config.title}] Миниатюра не найдена: {thumbnail}", level="warning")
+            return None
+        return thumbnail
+
+    def _wait_video_processing(self, wait):
+        log(f"[{self.config.title}] Ожидание обработки видео…")
+        # Тут можно проверять появление прогресс-бара или других индикаторов
+        time.sleep(5)  # базовая пауза для обработки
+
+    def _fill_metadata(self, driver, wait, title: str, description: str, tags: list[str] | None):
+        # На странице ВК пока нет отдельных полей для метаданных как на Rutube,
+        # но можно добавить логику если появятся
+        if title or description:
+            log(f"[{self.config.title}] Заполняем метаданные (title/description) — пока заглушка")
+        # Можно расширить под textarea или input если появятся
+
+    def _get_video_url(self, wait) -> str | None:
+        try:
+            link_el = wait.until(
+                EC.presence_of_element_located((By.XPATH, "//a[contains(@href,'vk.com/video')]"))
+            )
+            video_url = link_el.get_attribute("href")
+            log(f"[{self.config.title}] Ссылка на видео: {video_url}")
+            return video_url
+        except Exception:
+            log(f"[{self.config.title}] Не удалось получить ссылку на видео", level="warning")
+            return None

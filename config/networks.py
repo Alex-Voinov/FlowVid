@@ -34,19 +34,41 @@ class NetworkConfig:
 YOUTUBE_SETTINGS = {
     "privacy_status": "unlisted",
     "made_for_kids": True,
-    "category_id": "22",
+    "category_id": "22",        # Дизайн
     "token_path": Path("token_youtube.pickle"),
     "scopes": ["https://www.googleapis.com/auth/youtube.upload"]
+}
+
+RUTUBE_SETTINGS = {
+    "upload_url": "https://studio.rutube.ru/uploader/",
+    "editor_url": "https://studio.rutube.ru/video/",
+    "base_video_url": "https://rutube.ru/video/",
+
+    # Таймауты
+    "wait_timeout": 20,
+    "post_ready_delay": 1.0,
+    "post_publish_delay": 1.0,
+    "dialog_open_delay": 1.0,
+
+    # Категория по умолчанию
+    "default_category": "Дизайн",
+
+    # Поведение
+    "scroll_into_view": True
+}
+
+VK_SETTINGS = {
+    "group_name": "free_eg",
 }
 
 
 # Список всех сетей, поддерживаемых FlowVid
 NETWORKS = [
-    NetworkConfig(key="rutube",    title="Rutube Reels",    uses_selenium=True),
+    NetworkConfig(key="rutube",    title="Rutube Reels",    uses_selenium=True,  platform_settings=RUTUBE_SETTINGS),
     NetworkConfig(key="pinterest", title="Pinterest Reels", uses_selenium=False),
     NetworkConfig(key="tiktok",    title="TikTok Reels",    uses_selenium=False),
     NetworkConfig(key="instagram", title="Instagram Reels", uses_selenium=False),
-    NetworkConfig(key="vk",        title="VK",              uses_selenium=True),
+    NetworkConfig(key="vk",        title="VK",              uses_selenium=True,  platform_settings=VK_SETTINGS),
     NetworkConfig(key="telegram",  title="Telegram",        uses_selenium=True),
     NetworkConfig(key="youtube",   title="YouTube",         uses_selenium=True,  platform_settings=YOUTUBE_SETTINGS),
 ]

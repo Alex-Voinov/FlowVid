@@ -15,9 +15,25 @@ class Uploader(BaseUploader):
 
     def __init__(self, config: NetworkConfig):
         self.config = config
-        profile_path = None
-        if config.platform_settings:
-            profile_path = config.platform_settings.get("profile_path")
+        # platform_settings может быть None
+        self.settings = config.platform_settings or {}
+
+        # профиль (как было)
+        profile_path = self.settings.get("profile_path")
+
+        # читаем параметры из настроек с дефолтами
+        self.upload_url = self.settings.get("upload_url", "https://studio.rutube.ru/uploader/")
+        self.editor_url = self.settings.get("editor_url", "https://studio.rutube.ru/video/")
+        self.base_video_url = self.settings.get("base_video_url", "https://rutube.ru/video/")
+
+        self.wait_timeout = self.settings.get("wait_timeout", 20)
+        self.post_ready_delay = self.settings.get("post_ready_delay", 1.0)
+        self.post_publish_delay = self.settings.get("post_publish_delay", 1.0)
+        self.dialog_open_delay = self.settings.get("dialog_open_delay", 1.0)
+
+        self.default_category = self.settings.get("default_category", "Дизайн")
+        self.scroll_into_view = self.settings.get("scroll_into_view", True)
+
         super().__init__(profile_path)
         log(f"[{self.config.title}] Инициализация завершена", level="info")
 
@@ -44,8 +60,8 @@ class Uploader(BaseUploader):
         thumbnail = self._validate_thumbnail(thumbnail)
 
         driver = SeleniumManager.instance().start(profile_name=profile_name, headless=False)
-        wait = WebDriverWait(driver, 20)
-        driver.get("https://studio.rutube.ru/uploader/")
+        wait = WebDriverWait(driver, self.wait_timeout)
+        driver.get(self.upload_url)
 
         # Загрузка видео
         self._upload_file(driver, wait, video_file)
@@ -55,7 +71,7 @@ class Uploader(BaseUploader):
         self._fill_metadata(driver, wait, title, description, tags)
     
         # Выбираем категорию
-        self._select_category(driver, wait, category="Дизайн") 
+        self._select_category(driver, wait, category=self.default_category) 
 
         # Загружаем обложку
         if thumbnail:
@@ -86,7 +102,8 @@ class Uploader(BaseUploader):
         combobox = wait.until(
             EC.element_to_be_clickable((By.CSS_SELECTOR, "div[role='combobox']"))
         )
-        driver.execute_script("arguments[0].scrollIntoView(true);", combobox)
+        if self.scroll_into_view:
+            driver.execute_script("arguments[0].scrollIntoView(true);", combobox)
         combobox.click()
 
         # 2. Ждём появления списка опций
@@ -130,13 +147,13 @@ class Uploader(BaseUploader):
         log(f"[{self.config.title}] Ссылка появилась: {video_url}")
 
         # Доп. пауза — Rutube долго дохерачит внутренние процессы
-        time.sleep(1.0)
+        time.sleep(self.post_ready_delay)
 
         # Жмём "Опубликовать"
         self._click_publish(driver, wait)
 
         # Даём загрузке обработать команду
-        time.sleep(1.0)
+        time.sleep(self.post_publish_delay)
 
         return video_url
 
@@ -154,10 +171,9 @@ class Uploader(BaseUploader):
             ))
         )
 
-        # Скроллим если нужно
-        driver.execute_script("arguments[0].scrollIntoView({block:'center'});", publish_btn)
-
-        # Кликаем
+        if self.scroll_into_view:
+            driver.execute_script("arguments[0].scrollIntoView({block:'center'});", publish_btn)
+        # Кликаем (через JS, как было)
         driver.execute_script("arguments[0].click();", publish_btn)
 
     def _validate_thumbnail(self, thumbnail):
@@ -180,8 +196,8 @@ class Uploader(BaseUploader):
             )
         )
 
-        # Скроллим к кнопке на всякий случай
-        driver.execute_script("arguments[0].scrollIntoView(true);", btn)
+        if self.scroll_into_view:
+            driver.execute_script("arguments[0].scrollIntoView(true);", btn)
 
         # Жмём
         btn.click()
@@ -207,11 +223,12 @@ class Uploader(BaseUploader):
                 (By.XPATH, "//div[contains(@class,'cover-uploader-module__container')]")
             )
         )
-        driver.execute_script("arguments[0].scrollIntoView(true);", upload_btn)
+        if self.scroll_into_view:
+            driver.execute_script("arguments[0].scrollIntoView(true);", upload_btn)
         upload_btn.click()
 
         # Ждём открытия диалога выбора файла
-        time.sleep(1.0)  # Можно увеличить, если диалог открывается медленно
+        time.sleep(self.dialog_open_delay)  # Можно увеличить, если диалог открывается медленно
 
         # Вводим путь к файлу и нажимаем Enter
         pyautogui.write(str(thumbnail.resolve()))

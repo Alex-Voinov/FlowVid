@@ -8,9 +8,13 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.keys import Keys
 import time
 
+
 class Uploader(BaseUploader):
     """
     Загрузчик видео в VK группу через Selenium.
+    Проверка авторизации делается только по URL:
+    - URL меняется после клика "Войти" (авторизация началась)
+    - URL возвращается на исходный (авторизация завершена)
     """
 
     def __init__(self, config):
@@ -38,18 +42,23 @@ class Uploader(BaseUploader):
         wait = WebDriverWait(driver, 20)
 
         # Открываем страницу группы
-        group_url = f"https://vk.com/{self.config.platform_settings.get("group_name")}"
+        group_url = f"https://vk.com/{self.config.platform_settings.get('group_name')}"
         log(f"[{self.config.title}] Открываем группу: {group_url}")
         driver.get(group_url)
 
+        # Проверяем авторизацию
+        self._handle_login_if_needed(driver, wait)
+
         # Кликаем "Добавить"
         add_btn = wait.until(
-            EC.element_to_be_clickable((By.XPATH, "//span[text()='Добавить']/ancestor::span[contains(@class,'vkuiButton__in')]"))
+            EC.element_to_be_clickable(
+                (By.XPATH, "//span[text()='Добавить']/ancestor::span[contains(@class,'vkuiButton__in')]")
+            )
         )
         driver.execute_script("arguments[0].scrollIntoView({block:'center'});", add_btn)
         add_btn.click()
         log(f"[{self.config.title}] Кликнули 'Добавить'")
-        time.sleep(1)  # ждём появления input
+        time.sleep(1)
 
         # Загружаем видео через input
         file_input = wait.until(
@@ -60,13 +69,13 @@ class Uploader(BaseUploader):
         file_input.send_keys(str(video_file.resolve()))
         log(f"[{self.config.title}] Видео отправлено в загрузку: {video_file}")
 
-        # Можно добавить ожидание прогресс-бара, пока видео обрабатывается
+        # Ожидаем обработки видео
         self._wait_video_processing(wait)
 
         # Заполняем описание и теги
         self._fill_metadata(driver, wait, title, description, tags)
 
-        # Возвращаем ссылку на видео после публикации
+        # Получаем ссылку на видео после публикации
         video_url = self._get_video_url(wait)
 
         log(f"[{self.config.title}] Видео успешно загружено: {video_url}", level="success")
@@ -78,6 +87,40 @@ class Uploader(BaseUploader):
             "video_url": video_url,
             "message": "Видео успешно загружено!"
         }
+
+    # ================================================================
+    # Авторизация через клик по кнопке, ожидание завершения
+    # ================================================================
+    def _handle_login_if_needed(self, driver, wait):
+        login_buttons_selectors = [
+            "//button[contains(text(),'Войти')]",
+            "//button[contains(@class,'quick_login_button')]",
+            "//button[contains(@class,'quick_reg_button')]"
+        ]
+
+        for selector in login_buttons_selectors:
+            try:
+                btn = driver.find_element(By.XPATH, selector)
+                if btn.is_displayed():
+                    log(f"[{self.config.title}] Кликнули по кнопке входа/регистрации")
+                    btn.click()
+                    self._wait_for_login_by_url(driver)
+                    break
+            except Exception:
+                continue
+
+    def _wait_for_login_by_url(self, driver, timeout: int = 600):
+        start_url = driver.current_url
+        log(f"[{self.config.title}] Ожидание начала авторизации по URL...")
+
+        # Ждём, пока URL изменится (начало авторизации)
+        WebDriverWait(driver, timeout).until(lambda d: d.current_url != start_url)
+        log(f"[{self.config.title}] Авторизация началась. Текущий URL: {driver.current_url}")
+
+        # Ждём, пока URL вернётся на исходный (авторизация завершена)
+        WebDriverWait(driver, timeout).until(lambda d: d.current_url == start_url)
+        log(f"[{self.config.title}] Авторизация завершена. Текущий URL: {driver.current_url}")
+        time.sleep(1)  # небольшая пауза для полной загрузки страницы
 
     # ================================================================
     # Вспомогательные методы
@@ -101,15 +144,11 @@ class Uploader(BaseUploader):
 
     def _wait_video_processing(self, wait):
         log(f"[{self.config.title}] Ожидание обработки видео…")
-        # Тут можно проверять появление прогресс-бара или других индикаторов
-        time.sleep(5)  # базовая пауза для обработки
+        time.sleep(5)  # базовая пауза
 
     def _fill_metadata(self, driver, wait, title: str, description: str, tags: list[str] | None):
-        # На странице ВК пока нет отдельных полей для метаданных как на Rutube,
-        # но можно добавить логику если появятся
         if title or description:
             log(f"[{self.config.title}] Заполняем метаданные (title/description) — пока заглушка")
-        # Можно расширить под textarea или input если появятся
 
     def _get_video_url(self, wait) -> str | None:
         try:

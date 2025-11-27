@@ -77,26 +77,30 @@ class Uploader(BaseUploader):
         # 8. Определяем является ли видео shorts
         self.is_shorts = self._is_shorts(driver, title, wait)
 
+        # 9. Заполняет описание + теги
+        self._fill_description(driver, description, tags)
+
+        self._fetch_uploaded_video_link(wait)
+
         if self.is_shorts:
             log("Видео является Shorts")
+            self._click_publish_shorts(driver, wait)
         else:
             log("Видео обычное")
+            self._attach_thumbnail(driver, wait, thumbnail)
+            self._set_publication_and_switch(driver, wait)
+            sleep(1)
+            self._click_publish(driver, wait) # переделать кнопку
 
-        
-            
-        # 6. Метаданные
-        self._fill_metadata(driver, wait, title, description, tags)
+        sleep(2)
 
-        # 7. URL результата
-        video_url = self._get_video_url(wait)
-
-        log(f"[{self.config.title}] Видео успешно загружено: {video_url}", level="success")
+        log(f"[{self.config.title}] Видео успешно загружено: {self.video_link}", level="success")
 
         return {
             "success": True,
             "platform": self.config.title,
             "video_path": str(video_file),
-            "video_url": video_url,
+            "video_url": self.video_link,
             "message": "Видео успешно загружено!",
         }
 
@@ -266,25 +270,6 @@ class Uploader(BaseUploader):
         log(f"[{self.config.title}] Ожидание обработки видео…")
         sleep(self.ps.get("processing_sleep", 5))
 
-    def _fill_metadata(self, driver, wait, title, description, tags):
-        """
-        Заглушка — интерфейс VK для заполнения метаданных сложный.
-        Оставлено для реализации в будущем.
-        """
-        if title or description:
-            log(f"[{self.config.title}] (Заглушка) Заполнение title/description")
-
-    def _get_video_url(self, wait):
-        """Возвращает URL загруженного видео."""
-        try:
-            element = wait.until(
-                EC.presence_of_element_located((By.XPATH, "//a[contains(@href,'vk.com/video')]"))
-            )
-            return element.get_attribute("href")
-        except Exception:
-            log(f"[{self.config.title}] Не удалось получить ссылку на видео", level="warning")
-            return None
-
     def _click_ok_if_present(self, driver, wait=None):
         """
         Если на странице есть кнопка с текстом "Понятно", нажимает её и логирует.
@@ -297,6 +282,147 @@ class Uploader(BaseUploader):
             log(f"[{self.config.title}] Кликнули по кнопке 'Понятно'")
         except:
             log(f"[{self.config.title}] Кнопка 'Понятно' не найдена")
+
+
+    def _fill_description(self, driver, description: str = "", tags: list[str] | None = None):
+        """
+        Заполняет поле описания видео/клипа.
+        - Определяет правильный <textarea> по self.is_shorts:
+            * shorts → data-testid="clips-upload-description"
+            * обычное видео → data-testid="video-edit-description"
+        - Добавляет теги через #, если переданы.
+        - Логирует действие.
+        """
+        if not description and not tags:
+            return  # ничего заполнять не нужно
+
+        # Определяем data-testid
+        testid = "clips-upload-description" if getattr(self, "is_shorts", False) else "video-edit-description"
+        
+        try:
+            textarea = driver.find_element(By.CSS_SELECTOR, f"textarea[data-testid='{testid}']")
+            text_value = description or ""
+            if tags:
+                text_value += "\n" + " ".join(f"#{tag}" for tag in tags)
+            
+            textarea.clear()
+            textarea.send_keys(text_value)
+            log(f"[{self.config.title}] Описание заполнено")
+        except Exception:
+            log(f"[{self.config.title}] Не удалось найти поле описания (data-testid='{testid}')", level="warning")
+
+
+    def _click_publish(self, driver, wait):
+        """
+        Кликает кнопку "Опубликовать" (для видео).
+        """
+        try:
+            btn = wait.until(
+                EC.element_to_be_clickable((
+                    By.XPATH,
+                    "//button[@data-testid='video_upload_end_editing']//span[text()='Опубликовать']"
+                ))
+            )
+            btn.click()
+            log(f"[{self.config.title}] Кликнули кнопку 'Опубликовать'")
+        except Exception:
+            log(f"[{self.config.title}] Кнопка 'Опубликовать' не найдена", level="warning")
+
+
+
+    def _click_publish_shorts(self, driver, wait):
+        """
+        Кликает кнопку "Опубликовать" (для шортов).
+        """
+        try:
+            btn = wait.until(
+                EC.element_to_be_clickable(
+                    (By.XPATH, "//span[contains(@class,'vkuiButton__content') and text()='Опубликовать']")
+                )
+            )
+            btn.click()
+            log(f"[{self.config.title}] Кликнули кнопку 'Опубликовать'")
+        except Exception:
+            log(f"[{self.config.title}] Кнопка 'Опубликовать' не найдена", level="warning")
+
+    def _fetch_uploaded_video_link(self, wait):
+        """
+        Находит ссылку на загруженное видео или шорт и сохраняет в self.video_link.
+        Ориентируется на self.is_shorts.
+        """
+        try:
+            if self.is_shorts:
+                selector = "a[data-testid='clips-upload-clip-link']"
+            else:
+                selector = "a[data-testid='video_upload_page_copy_video_link']"
+
+            link_el = wait.until(
+                lambda d: d.find_element(By.CSS_SELECTOR, selector)
+            )
+            self.video_link = link_el.get_attribute("href")
+            log(f"[{self.config.title}] Ссылка на видео сохранена: {self.video_link}")
+        except Exception:
+            self.video_link = None
+            log(f"[{self.config.title}] Не удалось найти ссылку на видео", level="warning")
+
+
+    def _attach_thumbnail(self, driver, wait, thumbnail: str | Path):
+        """
+        Кликает на иконку 'прикрепить медиа' и загружает изображение в поле обложки/миниатюры.
+
+        Args:
+            driver: Selenium WebDriver
+            wait: WebDriverWait
+            thumbnail: путь к изображению
+        """
+        if not thumbnail:
+            return
+
+        thumbnail_path = Path(thumbnail).resolve()
+        if not thumbnail_path.exists():
+            log(f"[{self.config.title}] Миниатюра не найдена: {thumbnail_path}", level="warning")
+            return
+
+        #  Загружаем файл через <input type="file">
+        try:
+            file_input = wait.until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "input[type='file']"))
+            )
+            file_input.send_keys(str(thumbnail_path))
+            log(f"[{self.config.title}] Загружена миниатюра: {thumbnail_path}")
+        except Exception:
+            log(f"[{self.config.title}] Не удалось загрузить миниатюру", level="warning")
+
+    def _set_publication_and_switch(self, driver, wait):
+        """
+        1. Кликает по табу "Публикация" в разделе публикации видео.
+        2. Включает/выключает переключатель (switch) рядом.
+        """
+        try:
+            # --- 1. Таб "Публикация"
+            publication_label = wait.until(
+                EC.element_to_be_clickable((
+                    By.XPATH,
+                    "//label[input[@data-testid='video_upload_publication_tab'] or span[text()='Публикация']]"
+                ))
+            )
+            publication_label.click()
+            log(f"[{self.config.title}] Кликнули по табу 'Публикация'")
+        except Exception as e:
+            log(f"[{self.config.title}] Не удалось найти/кликнуть по табу 'Публикация': {e}", level="warning")
+
+        try:
+            # --- 2. Переключатель (switch)
+            switch_label = wait.until(
+                EC.element_to_be_clickable((
+                    By.XPATH,
+                    "//label[input[@type='checkbox'] and contains(@class,'vkuiSwitch__host')]"
+                ))
+            )
+            switch_label.click()
+            log(f"[{self.config.title}] Кликнули по переключателю (switch)")
+        except Exception as e:
+            log(f"[{self.config.title}] Не удалось найти/кликнуть по переключателю: {e}", level="warning")
 
 
     # ================================================================

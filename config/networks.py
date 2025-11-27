@@ -68,7 +68,21 @@ RUTUBE_SETTINGS = {
 
 VK_SETTINGS = {
     "group_name": "free_eg",
+
+    # Кнопка "Добавить" (в сообществе)
+    "btn_add_xpath": "//span[text()='Добавить']/ancestor::span[contains(@class,'vkuiButton__in')]",
+
+    # Поле выбора файла
+    "file_input_xpath": "//input[@type='file' and contains(@class,'vkuiVisuallyHidden')]",
+
+    # Кнопки для входа
+    "login_buttons": [
+        "//button[contains(text(),'Войти')]",
+        "//button[contains(@class,'quick_login_button')]",
+        "//button[contains(@class,'quick_reg_button')]"
+    ]
 }
+
 
 
 # Список всех сетей, поддерживаемых FlowVid

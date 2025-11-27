@@ -59,8 +59,11 @@ class Uploader(BaseUploader):
         # 2. Нужна ли авторизация
         self._handle_login_if_needed(driver)
 
-        # 3. Кнопка "Добавить"
+        # 3. Кнопка "Добавить", вызывает выпадающий список
         self._click_add_button(driver, wait)
+
+        # 3. Кнопка "загрузить" в выпадающем списке
+        self._click_upload_video_menu_item(driver, wait)
 
         # 4. Загрузка файла
         self._upload_video_file(driver, wait, video_file)
@@ -146,11 +149,58 @@ class Uploader(BaseUploader):
     # ЗАГРУЗКА ФАЙЛА
     # ================================================================
     def _click_add_button(self, driver, wait):
-        xpath = self.ps["btn_add_xpath"]
-        btn = wait.until(EC.element_to_be_clickable((By.XPATH, xpath)))
-        driver.execute_script("arguments[0].scrollIntoView({block:'center'});", btn)
-        btn.click()
-        log(f"[{self.config.title}] Нажали кнопку 'Добавить'")
+        """
+        Кликает кнопку 'Добавить' в группе VK.
+        
+        Сначала пробует CSS-селектор из конфигурации, затем запасной XPath.
+        Логирование выполнения действия.
+        """
+        # Сначала пробуем CSS
+        css_selector = self.ps.get("btn_add_css")
+        xpath_selector = self.ps.get("btn_add_xpath")
+
+        btn = None
+        if css_selector:
+            try:
+                btn = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, css_selector)))
+            except Exception:
+                log(f"[{self.config.title}] Кнопка 'Добавить' по CSS не найдена, пробуем XPath", level="warning")
+
+        # Если CSS не сработал, используем XPath
+        if not btn and xpath_selector:
+            btn = wait.until(EC.element_to_be_clickable((By.XPATH, xpath_selector)))
+
+        if btn:
+            driver.execute_script("arguments[0].scrollIntoView({block:'center'});", btn)
+            btn.click()
+            log(f"[{self.config.title}] Нажали кнопку 'Добавить'")
+        else:
+            log(f"[{self.config.title}] Не удалось найти кнопку 'Добавить'", level="error")
+            raise RuntimeError("Кнопка 'Добавить' не найдена на странице")
+
+
+    def _click_upload_video_menu_item(self, driver, wait):
+        """
+        Кликает по элементу 'Загрузить видео' в меню действий группы.
+
+        Используется после открытия меню через кнопку 'Добавить'.
+        Селектор ориентирован на класс и текст внутри.
+        """
+        xpath = (
+            "//div[contains(@class,'ui_actions_menu_item') "
+            "and contains(normalize-space(.),'Загрузить видео')]"
+        )
+
+        try:
+            menu_item = wait.until(EC.element_to_be_clickable((By.XPATH, xpath)))
+            driver.execute_script("arguments[0].scrollIntoView({block:'center'});", menu_item)
+            menu_item.click()
+            log(f"[{self.config.title}] Нажали 'Загрузить видео' в меню")
+        except Exception as e:
+            log(f"[{self.config.title}] Не удалось найти или кликнуть 'Загрузить видео': {e}", level="error")
+            raise RuntimeError("Не удалось кликнуть 'Загрузить видео'")
+
+
 
     def _upload_video_file(self, driver, wait, video_file):
         xpath = self.ps["file_input_xpath"]

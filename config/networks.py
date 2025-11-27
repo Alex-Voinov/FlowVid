@@ -69,8 +69,11 @@ RUTUBE_SETTINGS = {
 VK_SETTINGS = {
     "group_name": "free_eg",
 
-    # Кнопка "Добавить" (в сообществе)
-    "btn_add_xpath": "//span[text()='Добавить']/ancestor::span[contains(@class,'vkuiButton__in')]",
+    # предпочтительный — CSS
+    "btn_add_css": "a[data-role='add-content']",
+    
+    # запасной xpath (на всякий случай)
+    "btn_add_xpath": "//a[@data-role='add-content' or .//span[contains(normalize-space(.),'Добавить')]]",
 
     # Поле выбора файла
     "file_input_xpath": "//input[@type='file' and contains(@class,'vkuiVisuallyHidden')]",

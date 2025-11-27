@@ -62,15 +62,28 @@ class Uploader(BaseUploader):
         # 3. Кнопка "Добавить", вызывает выпадающий список
         self._click_add_button(driver, wait)
 
-        # 3. Кнопка "загрузить" в выпадающем списке
+        # 4. Кнопка "загрузить" в выпадающем списке
         self._click_upload_video_menu_item(driver, wait)
 
-        # 4. Загрузка файла
+        # 5. Загрузка файла
         self._upload_video_file(driver, wait, video_file)
 
-        # 5. Ожидание обработки
+        # 6. Ожидание обработки
         self._wait_video_processing()
 
+        # 7. Если есть кнопка "Понятно" (всегда для shrots?) нажимает ее
+        self._click_ok_if_present(driver, wait)
+
+        # 8. Определяем является ли видео shorts
+        self.is_shorts = self._is_shorts(driver, title, wait)
+
+        if self.is_shorts:
+            log("Видео является Shorts")
+        else:
+            log("Видео обычное")
+
+        
+            
         # 6. Метаданные
         self._fill_metadata(driver, wait, title, description, tags)
 
@@ -107,6 +120,41 @@ class Uploader(BaseUploader):
                 continue
 
         log(f"[{self.config.title}] Авторизация не требуется (кнопки входа не найдены)")
+
+    def _is_shorts(self, driver, title: str, wait=None, ) -> bool:
+        """
+        Проверяет, является ли загруженное видео Shorts.
+
+        Логика:
+        - Если на странице присутствует <input> с атрибутом 
+        `data-testid="video-edit-title"` — это обычное видео.
+        - Если такого элемента нет — это Shorts.
+
+        Args:
+            driver: Selenium WebDriver
+            wait: WebDriverWait (опционально)
+
+        Returns:
+            True  — видео Shorts
+            False — обычное видео
+        """
+        selector = 'input[data-testid="video-edit-title"]'
+
+        try:
+            if wait:
+                elem = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, selector)))
+            else:
+                elem = driver.find_element(By.CSS_SELECTOR, selector)
+            
+            # Элемент найден — это обычное видео, заполняем title
+            elem.clear()
+            elem.send_keys(title)
+            return False  # обычное видео
+        except:
+            # Элемент не найден — это Shorts
+            return True
+
+
 
     def _wait_for_auth(self, driver):
         """
@@ -236,6 +284,20 @@ class Uploader(BaseUploader):
         except Exception:
             log(f"[{self.config.title}] Не удалось получить ссылку на видео", level="warning")
             return None
+
+    def _click_ok_if_present(self, driver, wait=None):
+        """
+        Если на странице есть кнопка с текстом "Понятно", нажимает её и логирует.
+        """
+        xpath = "//span[normalize-space(text())='Понятно']/ancestor::button"
+        try:
+            btn = wait.until(EC.element_to_be_clickable((By.XPATH, xpath))) if wait else driver.find_element(By.XPATH, xpath)
+            driver.execute_script("arguments[0].scrollIntoView({block:'center'});", btn)
+            btn.click()
+            log(f"[{self.config.title}] Кликнули по кнопке 'Понятно'")
+        except:
+            log(f"[{self.config.title}] Кнопка 'Понятно' не найдена")
+
 
     # ================================================================
     # ВАЛИДАЦИЯ

@@ -8,6 +8,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from .base_uploader import BaseUploader
 from utils.logger import log
 from core.selenium_manager import SeleniumManager
+from selenium.common.exceptions import TimeoutException, NoSuchElementException
 
 
 class Uploader(BaseUploader):
@@ -68,31 +69,26 @@ class Uploader(BaseUploader):
         # 5. Загрузка файла
         self._upload_video_file(driver, wait, video_file)
 
-        # 6. Ожидание обработки
-        self._wait_video_processing()
-
-        # 7. Если есть кнопка "Понятно" (всегда для shrots?) нажимает ее
+        # 6. Если есть кнопка "Понятно" (всегда для shrots?) нажимает ее
         self._click_ok_if_present(driver, wait)
 
-        # 8. Определяем является ли видео shorts
+        # 7. Определяем является ли видео shorts
         self.is_shorts = self._is_shorts(driver, title, wait)
 
-        # 9. Заполняет описание + теги
+        # 8. Заполняет описание + теги
         self._fill_description(driver, description, tags)
 
         self._fetch_uploaded_video_link(wait)
 
         if self.is_shorts:
             log("Видео является Shorts")
-            self._click_publish_shorts(driver, wait)
         else:
             log("Видео обычное")
             self._attach_thumbnail(driver, wait, thumbnail)
-            self._set_publication_and_switch(driver, wait)
-            sleep(1)
-            self._click_publish(driver, wait) # переделать кнопку
+            self._set_publication_and_switch(wait)
 
-        sleep(2)
+        self._wait_and_publish(driver, wait, poll_interval=2, timeout=300)
+
 
         log(f"[{self.config.title}] Видео успешно загружено: {self.video_link}", level="success")
 
@@ -143,19 +139,14 @@ class Uploader(BaseUploader):
             False — обычное видео
         """
         selector = 'input[data-testid="video-edit-title"]'
-
         try:
-            if wait:
-                elem = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, selector)))
-            else:
-                elem = driver.find_element(By.CSS_SELECTOR, selector)
-            
-            # Элемент найден — это обычное видео, заполняем title
-            elem.clear()
-            elem.send_keys(title)
-            return False  # обычное видео
-        except:
-            # Элемент не найден — это Shorts
+            elem = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, selector))) if wait else driver.find_element(By.CSS_SELECTOR, selector)
+            # Элемент найден — обычное видео
+            if title:
+                elem.clear()
+                elem.send_keys(title)
+            return False
+        except (NoSuchElementException, TimeoutException):
             return True
 
 
@@ -257,18 +248,48 @@ class Uploader(BaseUploader):
     def _upload_video_file(self, driver, wait, video_file):
         xpath = self.ps["file_input_xpath"]
         file_input = wait.until(EC.presence_of_element_located((By.XPATH, xpath)))
+        driver.execute_script("arguments[0].scrollIntoView({block:'center'});", file_input)
         file_input.send_keys(str(video_file.resolve()))
         log(f"[{self.config.title}] Видео отправлено: {video_file}")
 
     # ================================================================
     # ОБРАБОТКА И МЕТА
     # ================================================================
-    def _wait_video_processing(self):
+    def _wait_and_publish(self, driver, wait, poll_interval=2, timeout=300):
         """
-        Заглушка. При желании можно заменить на отслеживание DOM.
+        Пытается нажать 'Опубликовать' каждые `poll_interval` секунд
+        до тех пор, пока:
+        1. URL изменится (публикация завершена) или
+        2. Появится элемент с текстом "Видео обработано и загружено"
         """
-        log(f"[{self.config.title}] Ожидание обработки видео…")
-        sleep(self.ps.get("processing_sleep", 5))
+        start_url = driver.current_url
+        start_time = time()
+        success_text = "Видео обработано и загружено"
+
+        while True:
+            try:
+                self._click_publish(wait)
+            except Exception as e:
+                log(f"[{self.config.title}] Попытка публикации не удалась: {e}", level="warning")
+
+            # Проверяем изменение URL
+            current_url = driver.current_url
+            if current_url != start_url:
+                log(f"[{self.config.title}] Видео опубликовано, URL изменился → {current_url}")
+                break
+
+            # Проверяем наличие текста на странице
+            if success_text.lower() in driver.page_source.lower():
+                log(f"[{self.config.title}] Видео обработано и загружено — публикация завершена")
+                break
+
+            # Тайм-аут
+            if time() - start_time > timeout:
+                log(f"[{self.config.title}] Видео не опубликовалось вовремя", level="error")
+                break
+
+            sleep(poll_interval)
+
 
     def _click_ok_if_present(self, driver, wait=None):
         """
@@ -280,8 +301,9 @@ class Uploader(BaseUploader):
             driver.execute_script("arguments[0].scrollIntoView({block:'center'});", btn)
             btn.click()
             log(f"[{self.config.title}] Кликнули по кнопке 'Понятно'")
-        except:
-            log(f"[{self.config.title}] Кнопка 'Понятно' не найдена")
+        except (TimeoutException, NoSuchElementException):
+            log(f"[{self.config.title}] Кнопка 'Понятно' отсутствует — продолжаем", level="info")
+
 
 
     def _fill_description(self, driver, description: str = "", tags: list[str] | None = None):
@@ -308,42 +330,27 @@ class Uploader(BaseUploader):
             textarea.clear()
             textarea.send_keys(text_value)
             log(f"[{self.config.title}] Описание заполнено")
-        except Exception:
-            log(f"[{self.config.title}] Не удалось найти поле описания (data-testid='{testid}')", level="warning")
+        except (NoSuchElementException, TimeoutException) as e:
+            log(f"[{self.config.title}] Не удалось найти поле описания (data-testid='{testid}'): {e}", level="warning")
 
 
-    def _click_publish(self, driver, wait):
+    def _click_publish(self, wait):
         """
-        Кликает кнопку "Опубликовать" (для видео).
-        """
-        try:
-            btn = wait.until(
-                EC.element_to_be_clickable((
-                    By.XPATH,
-                    "//button[@data-testid='video_upload_end_editing']//span[text()='Опубликовать']"
-                ))
-            )
-            btn.click()
-            log(f"[{self.config.title}] Кликнули кнопку 'Опубликовать'")
-        except Exception:
-            log(f"[{self.config.title}] Кнопка 'Опубликовать' не найдена", level="warning")
-
-
-
-    def _click_publish_shorts(self, driver, wait):
-        """
-        Кликает кнопку "Опубликовать" (для шортов).
+        Кликает кнопку 'Опубликовать'.
+        Объединяет логику для обычного видео и шортсов.
         """
         try:
-            btn = wait.until(
-                EC.element_to_be_clickable(
-                    (By.XPATH, "//span[contains(@class,'vkuiButton__content') and text()='Опубликовать']")
-                )
+            xpath = (
+                "//span[contains(@class,'vkuiButton__content') and text()='Опубликовать']"
+                if self.is_shorts else
+                "//button[@data-testid='video_upload_end_editing']//span[text()='Опубликовать']"
             )
+            btn = wait.until(EC.element_to_be_clickable((By.XPATH, xpath)))
             btn.click()
             log(f"[{self.config.title}] Кликнули кнопку 'Опубликовать'")
-        except Exception:
-            log(f"[{self.config.title}] Кнопка 'Опубликовать' не найдена", level="warning")
+        except (TimeoutException, NoSuchElementException) as e:
+            log(f"[{self.config.title}] Кнопка 'Опубликовать' не найдена: {e}", level="warning")
+
 
     def _fetch_uploaded_video_link(self, wait):
         """
@@ -365,10 +372,40 @@ class Uploader(BaseUploader):
             self.video_link = None
             log(f"[{self.config.title}] Не удалось найти ссылку на видео", level="warning")
 
+    def _wait_for_thumbnail_uploaded(self, driver, timeout=20, poll_interval=0.5) -> bool:
+        """
+        Ожидает, пока миниатюра успешно загрузится.
+
+        Args:
+            driver: Selenium WebDriver
+            timeout: максимальное время ожидания (сек)
+            poll_interval: интервал между проверками (сек)
+
+        Returns:
+            True — миниатюра загружена
+            False — тайм-аут
+        """
+        start_time = time()
+        while True:
+            try:
+                selected_icon = driver.find_element(By.CSS_SELECTOR, "[data-testid='media-attach-selected-icon']")
+                if selected_icon.is_displayed():
+                    log(f"[{self.config.title}] Обложка успешно загружена и готова к выбору")
+                    return True
+            except NoSuchElementException:
+                pass
+
+            if time() - start_time > timeout:
+                log(f"[{self.config.title}] Обложка не загрузилась за {timeout} секунд", level="warning")
+                return False
+
+            sleep(poll_interval)
+
+
 
     def _attach_thumbnail(self, driver, wait, thumbnail: str | Path):
         """
-        Кликает на иконку 'прикрепить медиа' и загружает изображение в поле обложки/миниатюры.
+        Отправляет файл миниатюры и ждёт, пока она будет успешно загружена.
 
         Args:
             driver: Selenium WebDriver
@@ -383,17 +420,21 @@ class Uploader(BaseUploader):
             log(f"[{self.config.title}] Миниатюра не найдена: {thumbnail_path}", level="warning")
             return
 
-        #  Загружаем файл через <input type="file">
         try:
-            file_input = wait.until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "input[type='file']"))
-            )
+            # Находим input для загрузки и отправляем файл
+            file_input = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "input[type='file']")))
+            driver.execute_script("arguments[0].scrollIntoView({block:'center'});", file_input)
             file_input.send_keys(str(thumbnail_path))
-            log(f"[{self.config.title}] Загружена миниатюра: {thumbnail_path}")
-        except Exception:
-            log(f"[{self.config.title}] Не удалось загрузить миниатюру", level="warning")
+            log(f"[{self.config.title}] Файл миниатюры отправлен: {thumbnail_path}")
 
-    def _set_publication_and_switch(self, driver, wait):
+            # --- Проверяем статус загрузки ---
+            self._wait_for_thumbnail_uploaded(driver)
+
+        except Exception as e:
+            log(f"[{self.config.title}] Не удалось загрузить миниатюру: {e}", level="warning")
+
+
+    def _set_publication_and_switch(self, wait):
         """
         1. Кликает по табу "Публикация" в разделе публикации видео.
         2. Включает/выключает переключатель (switch) рядом.
@@ -439,6 +480,5 @@ class Uploader(BaseUploader):
             return None
         thumbnail = Path(thumbnail)
         if not thumbnail.exists():
-            log(f"[{self.config.title}] миниатюра не найдена: {thumbnail}", level="warning")
             return None
         return thumbnail
